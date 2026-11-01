@@ -1,0 +1,354 @@
+name: 构建 f2fs-tools
+
+on:
+  push:
+    branches: [main]
+    tags: ['*']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      f2fs_ref:
+        description: 'f2fs-tools git ref（分支 / 标签 / commit），留空使用 master'
+        required: false
+        default: ''
+        type: string
+      imgkit_ref:
+        description: 'ImgKit-Scuti git ref（分支 / 标签 / commit），留空使用默认分支 main'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  TZ: Asia/Shanghai
+  DEBIAN_FRONTEND: noninteractive
+  CARGO_TERM_COLOR: never
+  RUST_BACKTRACE: '1'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: build-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+          - arch: aarch64
+            runner: ubuntu-22.04-arm
+    steps:
+      - name: 初始化目录并设置时区为 Asia/Shanghai
+        id: env
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p logs dist stage src
+          sudo timedatectl set-timezone Asia/Shanghai 2>/dev/null || {
+            sudo ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+            echo 'Asia/Shanghai' | sudo tee /etc/timezone >/dev/null
+          }
+          {
+            echo "== date (Asia/Shanghai) =="
+            date '+%Y-%m-%d %H:%M:%S %Z (%z)'
+            echo
+            echo "== timezone =="
+            timedatectl 2>/dev/null || cat /etc/timezone
+          } 2>&1 | tee logs/00-timezone.log
+
+      - name: 安装编译依赖
+        id: deps
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update 2>&1 | tee logs/01-apt-update.log
+          sudo apt-get install -y --no-install-recommends \
+            build-essential autoconf automake libtool libtool-bin pkg-config m4 \
+            uuid-dev libselinux1-dev libblkid-dev liblzo2-dev liblz4-dev \
+            cmake nasm file git ca-certificates curl \
+            2>&1 | tee logs/02-apt-install.log
+
+      - name: 记录构建环境信息
+        id: sysinfo
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "== os-release =="
+            cat /etc/os-release
+            echo
+            echo "== kernel =="
+            uname -a
+            echo
+            echo "== cpu =="
+            lscpu
+            echo
+            echo "== memory =="
+            free -h
+            echo
+            echo "== disk =="
+            df -h
+            echo
+            echo "== toolchain =="
+            gcc --version | head -n1
+            make --version | head -n1
+            cmake --version | head -n1
+            pkg-config --version
+          } 2>&1 | tee logs/03-environment.log
+
+      - name: 克隆 f2fs-tools 与 ImgKit-Scuti
+        id: clone
+        shell: bash
+        env:
+          F2FS_REF: ${{ inputs.f2fs_ref }}
+          IMGKIT_REF: ${{ inputs.imgkit_ref }}
+        run: |
+          set -euo pipefail
+          LOG="$GITHUB_WORKSPACE/logs"
+
+          echo "== cloning f2fs-tools ==" | tee "$LOG/10-f2fs-clone.log"
+          git clone https://git.kernel.org/pub/scm/linux/kernel/git/jaegeuk/f2fs-tools.git src/f2fs-tools \
+            2>&1 | tee -a "$LOG/10-f2fs-clone.log"
+          if [ -n "${F2FS_REF}" ]; then
+            git -C src/f2fs-tools fetch --tags origin 2>&1 | tee -a "$LOG/10-f2fs-clone.log"
+            if ! git -C src/f2fs-tools checkout "$F2FS_REF" 2>&1 | tee -a "$LOG/10-f2fs-clone.log"; then
+              git -C src/f2fs-tools fetch origin "$F2FS_REF" 2>&1 | tee -a "$LOG/10-f2fs-clone.log"
+              git -C src/f2fs-tools checkout FETCH_HEAD 2>&1 | tee -a "$LOG/10-f2fs-clone.log"
+            fi
+          fi
+          {
+            echo
+            echo "== f2fs-tools HEAD =="
+            git -C src/f2fs-tools log -1 --format='%H%n%ad%n%s' --date=iso
+            echo
+            echo "== f2fs-tools describe =="
+            git -C src/f2fs-tools describe --tags --always || true
+            echo
+            echo "== f2fs-tools VERSION =="
+            cat src/f2fs-tools/VERSION
+          } 2>&1 | tee -a "$LOG/10-f2fs-clone.log"
+
+          echo "== cloning ImgKit-Scuti ==" | tee "$LOG/11-imgkit-clone.log"
+          git clone https://github.com/Kindness-Kismet/ImgKit-Scuti.git src/ImgKit-Scuti \
+            2>&1 | tee -a "$LOG/11-imgkit-clone.log"
+          if [ -n "${IMGKIT_REF}" ]; then
+            git -C src/ImgKit-Scuti fetch --tags origin 2>&1 | tee -a "$LOG/11-imgkit-clone.log"
+            if ! git -C src/ImgKit-Scuti checkout "$IMGKIT_REF" 2>&1 | tee -a "$LOG/11-imgkit-clone.log"; then
+              git -C src/ImgKit-Scuti fetch origin "$IMGKIT_REF" 2>&1 | tee -a "$LOG/11-imgkit-clone.log"
+              git -C src/ImgKit-Scuti checkout FETCH_HEAD 2>&1 | tee -a "$LOG/11-imgkit-clone.log"
+            fi
+          fi
+          {
+            echo
+            echo "== ImgKit-Scuti HEAD =="
+            git -C src/ImgKit-Scuti log -1 --format='%H%n%ad%n%s' --date=iso
+            echo
+            echo "== ImgKit-Scuti Cargo.toml =="
+            sed -n '1,12p' src/ImgKit-Scuti/Cargo.toml
+          } 2>&1 | tee -a "$LOG/11-imgkit-clone.log"
+
+      - name: 安装 Rust 工具链
+        id: rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 记录 Rust 工具链版本
+        shell: bash
+        run: |
+          set -euo pipefail
+          { rustc -Vv; cargo -V; } 2>&1 | tee logs/05-rust.log
+
+      - name: Cargo 缓存
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src/ImgKit-Scuti -> target
+          key: ${{ matrix.arch }}
+
+      - name: 编译 f2fs-tools
+        id: f2fs
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG="$GITHUB_WORKSPACE/logs"
+          cd "$GITHUB_WORKSPACE/src/f2fs-tools"
+
+          echo "== autogen ==" | tee "$LOG/20-f2fs-autogen.log"
+          sh ./autogen.sh 2>&1 | tee -a "$LOG/20-f2fs-autogen.log"
+
+          echo "== configure ==" | tee "$LOG/21-f2fs-configure.log"
+          ./configure \
+            --prefix=/usr \
+            --enable-static \
+            --disable-shared \
+            --with-selinux \
+            --with-blkid \
+            --with-lz4 \
+            --with-lzo2 \
+            2>&1 | tee -a "$LOG/21-f2fs-configure.log"
+
+          echo "== make ==" | tee "$LOG/22-f2fs-make.log"
+          make -j"$(nproc)" 2>&1 | tee -a "$LOG/22-f2fs-make.log"
+
+          echo "== make install ==" | tee "$LOG/23-f2fs-install.log"
+          make install DESTDIR="$GITHUB_WORKSPACE/stage" 2>&1 | tee -a "$LOG/23-f2fs-install.log"
+
+          {
+            echo "== build outputs =="
+            file mkfs/mkfs.f2fs fsck/fsck.f2fs tools/f2fscrypt tools/f2fs_io/f2fs_io
+            echo
+            echo "== versions =="
+            ./mkfs/mkfs.f2fs -V || true
+            ./fsck/fsck.f2fs -V || true
+            echo
+            echo "== ldd =="
+            ldd mkfs/mkfs.f2fs || true
+            ldd fsck/fsck.f2fs || true
+            echo
+            echo "== installed tree =="
+            find "$GITHUB_WORKSPACE/stage" -maxdepth 3 -printf '%M %p -> %l\n' | sort
+          } 2>&1 | tee "$LOG/24-f2fs-verify.log"
+
+      - name: 编译 ImgKit-Scuti
+        id: imgkit
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG="$GITHUB_WORKSPACE/logs"
+          cd "$GITHUB_WORKSPACE/src/ImgKit-Scuti"
+
+          echo "== cargo build --release ==" | tee "$LOG/30-imgkit-cargo.log"
+          cargo build --release 2>&1 | tee -a "$LOG/30-imgkit-cargo.log"
+
+          {
+            echo "== binary =="
+            file target/release/imgkit_scuti
+            echo
+            echo "== ldd =="
+            ldd target/release/imgkit_scuti || true
+            echo
+            echo "== help =="
+            ./target/release/imgkit_scuti --help
+          } 2>&1 | tee "$LOG/31-imgkit-verify.log"
+
+      - name: 准备产物（3 个二进制）
+        id: package
+        shell: bash
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          LOG="$GITHUB_WORKSPACE/logs"
+          cd "$GITHUB_WORKSPACE"
+
+          F2FS_VERSION=$(sed -n '1p' src/f2fs-tools/VERSION)
+          F2FS_DATE=$(sed -n '2p' src/f2fs-tools/VERSION)
+          F2FS_COMMIT=$(git -C src/f2fs-tools rev-parse HEAD)
+          F2FS_DESC=$(git -C src/f2fs-tools describe --tags --always)
+          IMGKIT_VERSION=$(sed -n 's/^version = "\(.*\)"$/\1/p' src/ImgKit-Scuti/Cargo.toml | head -n1)
+          IMGKIT_COMMIT=$(git -C src/ImgKit-Scuti rev-parse HEAD)
+
+          DATE=$(TZ=Asia/Shanghai date +%Y%m%d)
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG="$GITHUB_REF_NAME"
+          else
+            TAG="$F2FS_DESC"
+          fi
+          TAG=$(printf '%s' "$TAG" | sed 's#[^A-Za-z0-9._-]#_#g')
+          NAME="f2fs-tools-${ARCH}-${DATE}-${TAG}"
+
+          # 只放 3 个二进制，zip 根目录保持干净
+          rm -rf dist/pkg
+          mkdir -p dist/pkg
+          cp stage/usr/sbin/mkfs.f2fs dist/pkg/mkfs.f2fs
+          cp stage/usr/sbin/fsck.f2fs dist/pkg/fsck.f2fs
+          cp src/ImgKit-Scuti/target/release/imgkit_scuti dist/pkg/imgkit_scuti
+
+          {
+            echo "== package: $NAME =="
+            echo "f2fs-tools : $F2FS_VERSION ($F2FS_DATE) | $F2FS_DESC | $F2FS_COMMIT"
+            echo "imgkit     : $IMGKIT_VERSION | $IMGKIT_COMMIT"
+            echo "build date : $(date '+%Y-%m-%d %H:%M:%S %Z (%z)')"
+            echo "runner     : $RUNNER_OS/$RUNNER_ARCH ($RUNNER_NAME)"
+            echo "run        : $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo
+            file dist/pkg/*
+            echo
+            ls -l dist/pkg
+            echo
+            sha256sum dist/pkg/*
+          } 2>&1 | tee "$LOG/40-package.log"
+
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
+      - name: 写入 Job Summary
+        if: success()
+        shell: bash
+        env:
+          NAME: ${{ steps.package.outputs.name }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## ✅ f2fs-tools ${{ matrix.arch }} 构建成功"
+            echo
+            echo "| 项目 | 值 |"
+            echo "| --- | --- |"
+            echo "| artifact | \`$NAME\`（GitHub 自动压成 \`$NAME.zip\`） |"
+            echo "| 运行器 | \`${{ matrix.runner }}\` |"
+            echo
+            echo "zip 根目录下共 3 个二进制：\`mkfs.f2fs\`、\`fsck.f2fs\`、\`imgkit_scuti\`。"
+            echo
+            echo "> 下载解压后需要 \`chmod +x mkfs.f2fs fsck.f2fs imgkit_scuti\`（GitHub artifact 压缩不保留执行位）。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 上传 f2fs-tools 产物
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.package.outputs.name }}
+          # dist/pkg 内的 3 个文件会位于 zip 根目录，GitHub 会自动压一次
+          path: dist/pkg/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: 生成日志摘要
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p logs
+          {
+            echo "workflow: $GITHUB_WORKFLOW"
+            echo "run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "ref: $GITHUB_REF @ $GITHUB_SHA"
+            echo "runner: $RUNNER_NAME ($RUNNER_OS/$RUNNER_ARCH)"
+            echo "job_status: ${{ job.status }}"
+            echo
+            echo "step_results:"
+            echo "  env:     ${{ steps.env.outcome }}"
+            echo "  deps:    ${{ steps.deps.outcome }}"
+            echo "  sysinfo: ${{ steps.sysinfo.outcome }}"
+            echo "  clone:   ${{ steps.clone.outcome }}"
+            echo "  rust:    ${{ steps.rust.outcome }}"
+            echo "  f2fs:    ${{ steps.f2fs.outcome }}"
+            echo "  imgkit:  ${{ steps.imgkit.outcome }}"
+            echo "  package: ${{ steps.package.outcome }}"
+            echo
+            echo "log_files:"
+            ls -lh logs || true
+          } > logs/99-summary.log
+          cat logs/99-summary.log
+
+      - name: 上传构建日志（无论成败）
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-logs-${{ matrix.arch }}
+          path: logs/
+          if-no-files-found: warn
+          retention-days: 30
