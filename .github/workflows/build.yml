@@ -97,9 +97,9 @@ jobs:
             df -h
             echo
             echo "== toolchain =="
-            gcc --version | head -n1
-            make --version | head -n1
-            cmake --version | head -n1
+            gcc --version | awk 'NR==1'
+            make --version | awk 'NR==1'
+            cmake --version | awk 'NR==1'
             pkg-config --version
           } 2>&1 | tee logs/03-environment.log
 
@@ -250,7 +250,7 @@ jobs:
           F2FS_DATE=$(sed -n '2p' src/f2fs-tools/VERSION)
           F2FS_COMMIT=$(git -C src/f2fs-tools rev-parse HEAD)
           F2FS_DESC=$(git -C src/f2fs-tools describe --tags --always)
-          IMGKIT_VERSION=$(sed -n 's/^version = "\(.*\)"$/\1/p' src/ImgKit-Scuti/Cargo.toml | head -n1)
+          IMGKIT_VERSION=$(awk -F'"' '/^version = "/{print $2; exit}' src/ImgKit-Scuti/Cargo.toml)
           IMGKIT_COMMIT=$(git -C src/ImgKit-Scuti rev-parse HEAD)
 
           DATE=$(TZ=Asia/Shanghai date +%Y%m%d)
