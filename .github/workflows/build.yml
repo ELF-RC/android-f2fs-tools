@@ -200,7 +200,8 @@ jobs:
 
           {
             echo "== build outputs =="
-            file mkfs/mkfs.f2fs fsck/fsck.f2fs tools/f2fscrypt tools/f2fs_io/f2fs_io
+            file mkfs/mkfs.f2fs fsck/fsck.f2fs tools/fibmap.f2fs tools/parse.f2fs \
+              tools/f2fscrypt tools/f2fs_io/f2fs_io
             echo
             echo "== versions =="
             ./mkfs/mkfs.f2fs -V || true
@@ -262,11 +263,12 @@ jobs:
           TAG=$(printf '%s' "$TAG" | sed 's#[^A-Za-z0-9._-]#_#g')
           NAME="f2fs-tools-${ARCH}-${DATE}-${TAG}"
 
-          # 只放 3 个二进制，zip 根目录保持干净
+          # f2fs-tools 的全部真实二进制；dump/defrag 等别名不在包内
           rm -rf dist/pkg
           mkdir -p dist/pkg
-          cp stage/usr/sbin/mkfs.f2fs dist/pkg/mkfs.f2fs
-          cp stage/usr/sbin/fsck.f2fs dist/pkg/fsck.f2fs
+          for bin in mkfs.f2fs fsck.f2fs fibmap.f2fs parse.f2fs f2fscrypt f2fs_io; do
+            cp "stage/usr/sbin/$bin" "dist/pkg/$bin"
+          done
           cp src/ImgKit-Scuti/target/release/imgkit_scuti dist/pkg/imgkit_scuti
 
           {
@@ -301,9 +303,9 @@ jobs:
             echo "| artifact | \`$NAME\`（GitHub 自动压成 \`$NAME.zip\`） |"
             echo "| 运行器 | \`${{ matrix.runner }}\` |"
             echo
-            echo "zip 根目录下共 3 个二进制：\`mkfs.f2fs\`、\`fsck.f2fs\`、\`imgkit_scuti\`。"
+            echo "zip 根目录下共 7 个二进制：\`mkfs.f2fs\`、\`fsck.f2fs\`、\`fibmap.f2fs\`、\`parse.f2fs\`、\`f2fscrypt\`、\`f2fs_io\`、\`imgkit_scuti\`。"
             echo
-            echo "> 下载解压后需要 \`chmod +x mkfs.f2fs fsck.f2fs imgkit_scuti\`（GitHub artifact 压缩不保留执行位）。"
+            echo "> 下载解压后需要 \`chmod +x mkfs.f2fs fsck.f2fs fibmap.f2fs parse.f2fs f2fscrypt f2fs_io imgkit_scuti\`（GitHub artifact 压缩不保留执行位）。"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: 上传 f2fs-tools 产物

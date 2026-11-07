@@ -32,7 +32,7 @@
 3. 克隆 f2fs-tools（默认 `master`）与 ImgKit-Scuti（默认 `main`）
 4. 安装 Rust stable，构建 ImgKit-Scuti（`cargo build --release`）
 5. 构建 f2fs-tools（`autogen.sh` → `configure` → `make` → `make install`）
-6. 上传 3 个二进制产物，收集全部日志
+6. 上传全部二进制产物，收集全部日志
 
 f2fs-tools 采用 `--enable-static --disable-shared`：`libf2fs` 静态链接进工具，
 系统库（libuuid / libselinux / libblkid / liblz4 / liblzo2）保持动态链接。
@@ -43,7 +43,7 @@ f2fs-tools 采用 `--enable-static --disable-shared`：`libf2fs` 静态链接进
 
 | artifact | 实际下载文件名 | 内容 |
 | --- | --- | --- |
-| `f2fs-tools-{arch}-{日期}-{tag}` | `f2fs-tools-{arch}-{日期}-{tag}.zip` | 根目录下 3 个二进制：`mkfs.f2fs`、`fsck.f2fs`、`imgkit_scuti` |
+| `f2fs-tools-{arch}-{日期}-{tag}` | `f2fs-tools-{arch}-{日期}-{tag}.zip` | 根目录下 7 个二进制：`mkfs.f2fs`、`fsck.f2fs`、`fibmap.f2fs`、`parse.f2fs`、`f2fscrypt`、`f2fs_io`、`imgkit_scuti` |
 | `build-logs-{arch}` | `build-logs-{arch}.zip` | 全流程日志（任何一步失败也会上传） |
 
 `{日期}` 为上海时区的 `YYYYMMDD`；`{tag}` 在 tag 触发时使用仓库 tag，
@@ -51,10 +51,12 @@ f2fs-tools 采用 `--enable-static --disable-shared`：`libf2fs` 静态链接进
 `v1.16.0-123-g83fd39a`。
 
 > GitHub artifact 的 zip 不保留执行位，解压后需要：
-> `chmod +x mkfs.f2fs fsck.f2fs imgkit_scuti`。
+> `chmod +x mkfs.f2fs fsck.f2fs fibmap.f2fs parse.f2fs f2fscrypt f2fs_io imgkit_scuti`。
 
 `dump.f2fs`、`defrag.f2fs`、`resize.f2fs`、`sload.f2fs`、`f2fslabel`、
-`inject.f2fs` 在 f2fs-tools 里都是 `fsck.f2fs` 的软链，需要时自行创建即可。
+`inject.f2fs` 在 f2fs-tools 里都是 `fsck.f2fs` 的软链，没有单独打进包；
+需要时 `ln -s fsck.f2fs dump.f2fs` 即可（`inject.f2fs` 在当前 autotools
+构建里未启用，会提示 not supported）。
 
 ## 本地等价构建
 
