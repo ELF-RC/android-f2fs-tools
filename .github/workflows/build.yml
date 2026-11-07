@@ -237,7 +237,7 @@ jobs:
             ./target/release/imgkit_scuti --help
           } 2>&1 | tee "$LOG/31-imgkit-verify.log"
 
-      - name: 准备产物（3 个二进制）
+      - name: 准备产物（全部二进制）
         id: package
         shell: bash
         env:
@@ -263,11 +263,15 @@ jobs:
           TAG=$(printf '%s' "$TAG" | sed 's#[^A-Za-z0-9._-]#_#g')
           NAME="f2fs-tools-${ARCH}-${DATE}-${TAG}"
 
-          # f2fs-tools 的全部真实二进制；dump/defrag 等别名不在包内
+          # f2fs-tools 的 6 个真实二进制
           rm -rf dist/pkg
           mkdir -p dist/pkg
           for bin in mkfs.f2fs fsck.f2fs fibmap.f2fs parse.f2fs f2fscrypt f2fs_io; do
             cp "stage/usr/sbin/$bin" "dist/pkg/$bin"
+          done
+          # fsck.f2fs 的 argv[0] 别名：按独立二进制（副本）输出
+          for alias in dump.f2fs defrag.f2fs resize.f2fs sload.f2fs f2fslabel inject.f2fs; do
+            cp "stage/usr/sbin/fsck.f2fs" "dist/pkg/$alias"
           done
           cp src/ImgKit-Scuti/target/release/imgkit_scuti dist/pkg/imgkit_scuti
 
@@ -303,9 +307,9 @@ jobs:
             echo "| artifact | \`$NAME\`（GitHub 自动压成 \`$NAME.zip\`） |"
             echo "| 运行器 | \`${{ matrix.runner }}\` |"
             echo
-            echo "zip 根目录下共 7 个二进制：\`mkfs.f2fs\`、\`fsck.f2fs\`、\`fibmap.f2fs\`、\`parse.f2fs\`、\`f2fscrypt\`、\`f2fs_io\`、\`imgkit_scuti\`。"
+            echo "zip 根目录下共 13 个二进制：\`mkfs.f2fs\`、\`fsck.f2fs\`、\`dump.f2fs\`、\`defrag.f2fs\`、\`resize.f2fs\`、\`sload.f2fs\`、\`f2fslabel\`、\`inject.f2fs\`、\`fibmap.f2fs\`、\`parse.f2fs\`、\`f2fscrypt\`、\`f2fs_io\`、\`imgkit_scuti\`。"
             echo
-            echo "> 下载解压后需要 \`chmod +x mkfs.f2fs fsck.f2fs fibmap.f2fs parse.f2fs f2fscrypt f2fs_io imgkit_scuti\`（GitHub artifact 压缩不保留执行位）。"
+            echo "> 下载解压后需要 \`chmod +x *\`（GitHub artifact 压缩不保留执行位）。"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: 上传 f2fs-tools 产物

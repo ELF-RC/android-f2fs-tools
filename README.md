@@ -43,20 +43,18 @@ f2fs-tools 采用 `--enable-static --disable-shared`：`libf2fs` 静态链接进
 
 | artifact | 实际下载文件名 | 内容 |
 | --- | --- | --- |
-| `f2fs-tools-{arch}-{日期}-{tag}` | `f2fs-tools-{arch}-{日期}-{tag}.zip` | 根目录下 7 个二进制：`mkfs.f2fs`、`fsck.f2fs`、`fibmap.f2fs`、`parse.f2fs`、`f2fscrypt`、`f2fs_io`、`imgkit_scuti` |
+| `f2fs-tools-{arch}-{日期}-{tag}` | `f2fs-tools-{arch}-{日期}-{tag}.zip` | 根目录下 13 个二进制：`mkfs.f2fs`、`fsck.f2fs`、`dump.f2fs`、`defrag.f2fs`、`resize.f2fs`、`sload.f2fs`、`f2fslabel`、`inject.f2fs`、`fibmap.f2fs`、`parse.f2fs`、`f2fscrypt`、`f2fs_io`、`imgkit_scuti` |
 | `build-logs-{arch}` | `build-logs-{arch}.zip` | 全流程日志（任何一步失败也会上传） |
 
 `{日期}` 为上海时区的 `YYYYMMDD`；`{tag}` 在 tag 触发时使用仓库 tag，
 否则使用 f2fs-tools 的 `git describe --tags --always`，例如
 `v1.16.0-123-g83fd39a`。
 
-> GitHub artifact 的 zip 不保留执行位，解压后需要：
-> `chmod +x mkfs.f2fs fsck.f2fs fibmap.f2fs parse.f2fs f2fscrypt f2fs_io imgkit_scuti`。
+> GitHub artifact 的 zip 不保留执行位，解压后需要：`chmod +x *`。
 
 `dump.f2fs`、`defrag.f2fs`、`resize.f2fs`、`sload.f2fs`、`f2fslabel`、
-`inject.f2fs` 在 f2fs-tools 里都是 `fsck.f2fs` 的软链，没有单独打进包；
-需要时 `ln -s fsck.f2fs dump.f2fs` 即可（`inject.f2fs` 在当前 autotools
-构建里未启用，会提示 not supported）。
+`inject.f2fs` 在 f2fs-tools 里通过 `argv[0]` 分派，包内按独立二进制输出
+（内容与 `fsck.f2fs` 相同）。
 
 ## 本地等价构建
 
