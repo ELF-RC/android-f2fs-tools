@@ -164,11 +164,9 @@ jobs:
           set -euo pipefail
           { rustc -Vv; cargo -V; } 2>&1 | tee logs/05-rust.log
 
-      - name: Cargo 缓存
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src/ImgKit-Scuti -> target
-          key: ${{ matrix.arch }}
+      # 不用 Swatinem/rust-cache：命中缓存后它的 step 会一直停在
+      # in_progress，构建和产物上传虽然完成，job 仍会被挂起后判失败。
+      # ImgKit 冷构建只要几分钟，直接跳过缓存。
 
       - name: 编译 f2fs-tools
         id: f2fs
